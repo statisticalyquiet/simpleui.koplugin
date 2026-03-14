@@ -52,7 +52,7 @@ All features are accessible via **Menu → Tools → SimpleUI**
 2. Extract the folder and confirm it is named `simpleui.koplugin`
 3. Copy the folder to the `plugins/` directory on your KOReader device
 4. Restart KOReader
-5. Go to **Menu → Tools → SimpleUI** to enable and configure the plugin
+5. Go to **Menu → File (archive cabinet) → SimpleUI** to enable and configure the plugin
 
 > **Tip:** After enabling the plugin, tap the **Desktop** tab in the bottom bar to open your new home screen.
 
