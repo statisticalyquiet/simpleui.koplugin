@@ -319,6 +319,10 @@ function M.onBookClosed(ctx, fp)
     _bstats_cache = {}
 end
 
+function M.invalidateCache()
+    _bstats_cache = {}
+end
+
 function M.build(w, ctx)
     if not ctx.current_fp then return nil end
 
