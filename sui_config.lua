@@ -42,15 +42,34 @@ if _ok_ds and _ds and type(_ds.getDataDir) == "function" then
     -- Walk up from data dir to find the KOReader install root (contains "resources").
     -- On most platforms data dir IS the install root; on Android it may differ.
     local lfs_ok, lfs_m = pcall(require, "libs/libkoreader-lfs")
-    if lfs_ok and lfs_m and lfs_m.attributes(_d .. "/resources/icons/mdlight", "mode") == "directory" then
-        _ko_root = _d .. "/"
+    if lfs_ok and lfs_m then
+        local function _is_root(dir)
+            return lfs_m.attributes(dir .. "/resources/icons/mdlight", "mode") == "directory"
+        end
+        if _is_root(_d) then
+            _ko_root = _d .. "/"
+        else
+            local parent = _d:match("^(.+)/[^/]+$")
+            if parent and _is_root(parent) then
+                _ko_root = parent .. "/"
+            end
+        end
     end
 end
 if _ko_root == "" then
-    -- Fallback: derive from plugin file location (works on Kobo/Kindle/desktop).
-    -- Plugin lives at <root>/plugins/simpleui.koplugin/sui_config.lua
-    -- so root is two directories up.
-    _ko_root = _plugin_dir:match("^(.*/)plugins/[^/]+/$") or ""
+    local lfs_ok, lfs_m = pcall(require, "libs/libkoreader-lfs")
+    if lfs_ok and lfs_m then
+        local p = (_plugin_dir:gsub("/$", ""))
+        for _i = 1, 8 do
+            if lfs_m.attributes(p .. "/resources/icons/mdlight", "mode") == "directory" then
+                _ko_root = p .. "/"
+                break
+            end
+            local parent = p:match("^(.+)/[^/]+$")
+            if not parent or parent == p then break end
+            p = parent
+        end
+    end
 end
 local _KO = _ko_root .. "resources/icons/mdlight/"
 
