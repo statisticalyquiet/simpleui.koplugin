@@ -615,7 +615,12 @@ function M.install()
         local dir_path = self.entry and self.entry.path
         if not dir_path then return end
 
-        self._foldercover_processed = true
+        -- NOTE: _foldercover_processed is intentionally NOT set here.
+        -- It is only set inside _setFolderCover, after a cover is successfully
+        -- applied. This allows BookInfoManager's async fetch to complete and
+        -- trigger updateItems again — at which point the cover will be available
+        -- and _setFolderCover will be called. If we set the flag here, the folder
+        -- would be permanently skipped on the first open before covers are cached.
 
         -- Check for a user-chosen cover override.
         local overrides = _getCoverOverrides()
@@ -635,6 +640,7 @@ function M.install()
         end
 
         -- Check for a .cover.* image file placed manually in the folder.
+        -- Static files are always available — mark as processed immediately.
         local cover_file = findCover(dir_path)
         if cover_file then
             local ok, w, h = pcall(function()
@@ -674,6 +680,10 @@ function M.install()
     end
 
     function MosaicMenuItem:_setFolderCover(img)
+        -- Mark as processed here — only reached when a cover is actually available.
+        -- This lets updateItems retry (after async BookInfoManager fetch) without
+        -- being blocked by an early flag set before the cover data was ready.
+        self._foldercover_processed = true
         local border    = Size.border.thin
         local max_img_w = self.width  - _SPINE_W - border * 2
         local max_img_h = self.height - border * 2
