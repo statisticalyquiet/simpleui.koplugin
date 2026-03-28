@@ -107,6 +107,7 @@ SimpleUI has full translation support. The UI language is detected automatically
 | English | *(built-in)* | Complete |
 | Português (Portugal) | `locale/pt_PT.po` | Complete (100%) |
 | Português (Brasil) | `locale/pt_BR.po` | Complete (100%) |
+| Polski (Polish) | `locale/pl-PL.po` | Complete (100%) |
 | Türkçe (Turkish) | `locale/tr.po` | Complete (100%) |
 | 简体中文 (Chinese Simplified) | `locale/zh_CN.po` | Partial (97.1% — 10 missing) |
 | 繁體中文 (Chinese Traditional) | `locale/zh_TW.po` | Partial (97.1% — 10 missing) |
