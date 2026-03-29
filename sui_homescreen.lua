@@ -1043,6 +1043,12 @@ function HomescreenWidget:onSuspend()
         UIManager:unschedule(self._clock_timer)
         self._clock_timer = nil
     end
+    -- Cancel the cover poll timer — cover extraction is paused by the OS
+    -- during suspend anyway, so polling serves no purpose.
+    if self._cover_poll_timer then
+        UIManager:unschedule(self._cover_poll_timer)
+        self._cover_poll_timer = nil
+    end
     -- Also cancel the module_clock timer.
     local ClockMod = Registry.get("clock")
     if ClockMod and ClockMod.cancelRefresh then ClockMod.cancelRefresh() end
