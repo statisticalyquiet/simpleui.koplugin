@@ -1604,6 +1604,8 @@ end
 --   • UIManager is not in quit/exit state
 --
 -- Called from SimpleUIPlugin:onResume() in main.lua.
+-- ---------------------------------------------------------------------------
+
 -- Reuses the already-installed _doShowHS closure from patchUIManagerClose
 -- by looking up the live FM instance the same way that function does.
 -- scheduleIn(0) defers until the event loop has finished processing the
@@ -1751,6 +1753,7 @@ function M.teardownAll(plugin)
         plugin._orig_initGesListener       = nil
         FileManager._simpleui_ges_patched  = nil
     end
+
     if FileManager and plugin._orig_fm_setup then
         FileManager.setupLayout = plugin._orig_fm_setup; plugin._orig_fm_setup = nil
     end

@@ -1766,3 +1766,31 @@ msgstr ""
 #: sui_menu.lua
 msgid "When enabled, long-pressing the bottom bar opens its settings menu.\nDisable this to prevent the settings menu from appearing on long tap."
 msgstr ""
+
+#: desktop_modules/module_tbr.lua
+msgid "Arrange To Be Read list"
+msgstr ""
+
+#: desktop_modules/module_tbr.lua
+msgid "Add at least 2 books to arrange."
+msgstr ""
+
+#: desktop_modules/module_tbr.lua
+msgid "To Be Read books"
+msgstr ""
+
+#: desktop_modules/module_tbr.lua
+msgid "No books in To Be Read list."
+msgstr ""
+
+#: desktop_modules/module_tbr.lua
+msgid "Add to To Be Read"
+msgstr ""
+
+#: desktop_modules/module_tbr.lua
+msgid "Remove from To Be Read"
+msgstr ""
+
+#: desktop_modules/module_tbr.lua
+msgid "To Be Read"
+msgstr ""

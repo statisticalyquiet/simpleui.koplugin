@@ -1773,3 +1773,31 @@ msgstr "Quando ativado, manter pressionada a barra superior abre o seu menu de c
 #: sui_menu.lua
 msgid "When enabled, long-pressing the bottom bar opens its settings menu.\nDisable this to prevent the settings menu from appearing on long tap."
 msgstr "Quando ativado, manter pressionada a barra inferior abre o seu menu de configurações.\nDesative para evitar que o menu de configurações apareça com toque longo."
+
+#: desktop_modules/module_tbr.lua
+msgid "Arrange To Be Read list"
+msgstr "Organizar lista Quero Ler"
+
+#: desktop_modules/module_tbr.lua
+msgid "Add at least 2 books to arrange."
+msgstr "Adicione pelo menos 2 livros para organizar."
+
+#: desktop_modules/module_tbr.lua
+msgid "To Be Read books"
+msgstr "Livros Quero Ler"
+
+#: desktop_modules/module_tbr.lua
+msgid "No books in To Be Read list."
+msgstr "Nenhum livro na lista Quero Ler."
+
+#: desktop_modules/module_tbr.lua
+msgid "Add to To Be Read"
+msgstr "Adicionar à lista Quero Ler"
+
+#: desktop_modules/module_tbr.lua
+msgid "Remove from To Be Read"
+msgstr "Remover da lista Quero Ler"
+
+#: desktop_modules/module_tbr.lua
+msgid "To Be Read"
+msgstr "Quero Ler"
