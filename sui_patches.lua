@@ -217,25 +217,33 @@ function M.patchFileManagerClass(plugin)
             if this._navbar_already_shown then return end
             this._navbar_already_shown = true
 
-            -- First genuine show: reset the active tab to "home" and navigate to home_dir.
+            -- First genuine show: reset the active tab to "home" and navigate to
+            -- home_dir, unless "Return to book folder" is enabled — in that case
+            -- the FM was already positioned at the book's folder by showFileManager()
+            -- (native KOReader behaviour) and we should not override that.
             if this._navbar_container then
                 local t = Config.loadTabConfig()
-                plugin.active_action = "home"
-                local home = G_reader_settings:readSetting("home_dir")
-                if home and this.file_chooser then
-                    -- Suppress onPathChanged: replaceBar below covers the bar update.
-                    this._navbar_suppress_path_change = true
-                    this.file_chooser:changeToPath(home)
-                    this._navbar_suppress_path_change = nil
-                    -- updateTitleBarPath is skipped when onPathChanged is suppressed,
-                    -- so call it explicitly to clear the subtitle at the home folder.
-                    -- Pass force_home=true so the function treats this as "at home"
-                    -- even when item_table is not yet populated (avoids stale subtitle).
-                    if this.updateTitleBarPath then
-                        this:updateTitleBarPath(home, true)
+                local return_to_folder = G_reader_settings:isTrue("navbar_hs_return_to_book_folder")
+                if not return_to_folder then
+                    plugin.active_action = "home"
+                    local home = G_reader_settings:readSetting("home_dir")
+                    if home and this.file_chooser then
+                        -- Suppress onPathChanged: replaceBar below covers the bar update.
+                        this._navbar_suppress_path_change = true
+                        this.file_chooser:changeToPath(home)
+                        this._navbar_suppress_path_change = nil
+                        -- updateTitleBarPath is skipped when onPathChanged is suppressed,
+                        -- so call it explicitly to clear the subtitle at the home folder.
+                        -- Pass force_home=true so the function treats this as "at home"
+                        -- even when item_table is not yet populated (avoids stale subtitle).
+                        if this.updateTitleBarPath then
+                            this:updateTitleBarPath(home, true)
+                        end
                     end
                 end
-                Bottombar.replaceBar(this, Bottombar.buildBarWidget("home", t), t)
+                local active = return_to_folder and M._resolveTabForPath(
+                    this.file_chooser and this.file_chooser.path, t) or "home"
+                Bottombar.replaceBar(this, Bottombar.buildBarWidget(active, t), t)
                 UIManager:setDirty(this, "ui")
             end
         end
@@ -1233,16 +1241,18 @@ function M.patchUIManagerClose(plugin)
                     -- to the FM (tearing_down is nil). When tearing_down=true the
                     -- reader is closing to open a *new* book — do NOT open the HS.
                     if not widget.tearing_down then
-                        _hs_pending_after_reader = true
-                        -- Refresh the FM's file list lazily (after the HS is shown)
-                        -- so that sort order and cover status reflect any changes
-                        -- made during the reading session (e.g. marking a book as
-                        -- finished). In the standard KOReader flow, showFiles()
-                        -- creates a brand-new FM and its init() calls refreshPath().
-                        -- With SimpleUI the FM stays alive and never gets that
-                        -- automatic refresh, so we do it here. scheduleIn(0) defers
-                        -- the work until after the HS has opened, avoiding any delay
-                        -- on the transition back from the reader.
+                        -- When "Return to Book Folder" is enabled, skip the HS
+                        -- re-open entirely — native KOReader behaviour takes over
+                        -- and the FM lands on the book's folder directly.
+                        local return_to_folder = G_reader_settings:isTrue("navbar_hs_return_to_book_folder")
+                        if not return_to_folder then
+                            _hs_pending_after_reader = true
+                        end
+                        -- Refresh the FM's file list lazily so that sort order and
+                        -- cover status reflect any changes made during the reading
+                        -- session (e.g. marking a book as finished). scheduleIn(0)
+                        -- defers the work until after the HS has opened (or the FM
+                        -- has appeared), avoiding any delay on the transition.
                         UIManager:scheduleIn(0, function()
                             local FM_ref = package.loaded["apps/filemanager/filemanager"]
                             local fm_ref = FM_ref and FM_ref.instance

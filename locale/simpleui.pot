@@ -1742,6 +1742,15 @@ msgstr ""
 msgid "Download and install"
 msgstr ""
 
+
+#: sui_menu.lua
+msgid "Return to Book Folder"
+msgstr ""
+
+#: sui_menu.lua
+msgid "When enabled, opening the file browser after finishing or closing a book navigates to the folder the book is in, matching native KOReader behaviour.\nWhen disabled (default), SimpleUI always returns to the library root."
+msgstr ""
+
 #: sui_menu.lua
 msgid "Settings on Long Tap"
 msgstr ""

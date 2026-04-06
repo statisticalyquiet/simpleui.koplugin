@@ -1584,6 +1584,18 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                 end,
             },
             {
+                text         = _("Return to Book Folder"),
+                help_text    = _("When enabled, opening the file browser after finishing or closing a book navigates to the folder the book is in, matching native KOReader behaviour.\nWhen disabled (default), SimpleUI always returns to the library root."),
+                checked_func = function()
+                    return G_reader_settings:isTrue("navbar_hs_return_to_book_folder")
+                end,
+                keep_menu_open = true,
+                callback = function()
+                    local on = G_reader_settings:isTrue("navbar_hs_return_to_book_folder")
+                    G_reader_settings:saveSetting("navbar_hs_return_to_book_folder", not on)
+                end,
+            },
+            {
                 text         = _("Settings on Long Tap"),
                 help_text    = _("When enabled, long-pressing a section opens its settings menu.\nDisable this to prevent the settings menu from appearing on long tap."),
                 checked_func = function()

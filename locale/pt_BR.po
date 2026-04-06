@@ -1749,6 +1749,15 @@ msgstr "O Simple UI %s está disponível!\nVersão atual: %s\n\nBaixar e instala
 msgid "Download and install"
 msgstr "Baixar e instalar"
 
+
+#: sui_menu.lua
+msgid "Return to Book Folder"
+msgstr "Retornar à pasta do livro"
+
+#: sui_menu.lua
+msgid "When enabled, opening the file browser after finishing or closing a book navigates to the folder the book is in, matching native KOReader behaviour.\nWhen disabled (default), SimpleUI always returns to the library root."
+msgstr "Quando ativado, abrir o navegador de arquivos após terminar ou fechar um livro navega para a pasta onde o livro está, replicando o comportamento nativo do KOReader.\nQuando desativado (padrão), o SimpleUI sempre retorna à raiz da biblioteca."
+
 #: sui_menu.lua
 msgid "Settings on Long Tap"
 msgstr "Configurações com toque longo"
