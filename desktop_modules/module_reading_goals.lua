@@ -54,6 +54,20 @@ local _COMPACT_BAR_H   = Screen:scaleBySize(7)
 local _COMPACT_LBL_W   = Screen:scaleBySize(44)
 local _COMPACT_COL_GAP = Screen:scaleBySize(8)
 
+-- Pre-resolved compact font faces — computed once at module load since
+-- _COMPACT_ROW_FS / _COMPACT_SUB_FS are fixed constants, not user-scalable.
+-- Avoids Font:getFace calls inside buildCompactGoalRow on every render.
+local _COMPACT_FACE_ROW -- forward-declared; resolved lazily on first use
+local _COMPACT_FACE_SUB -- so Font is available at resolution time
+local function _getCompactFaces()
+    if not _COMPACT_FACE_ROW then
+        local Font = require("ui/font")
+        _COMPACT_FACE_ROW = Font:getFace("smallinfofont", _COMPACT_ROW_FS)
+        _COMPACT_FACE_SUB = Font:getFace("cfont",         _COMPACT_SUB_FS)
+    end
+    return _COMPACT_FACE_ROW, _COMPACT_FACE_SUB
+end
+
 local function _getYearStr() return os.date("%Y") end
 
 -- Settings keys
@@ -80,59 +94,22 @@ local function formatDuration(secs)
     else                     return string.format("%dm", m) end
 end
 
--- Stats cache keyed by calendar date
-local _stats_cache     = nil
-local _stats_cache_day = nil
+-- Stats cache and per-module fetch logic have been moved to
+-- desktop_modules/module_stats_provider.lua (SP). The provider runs one
+-- consolidated DB query covering today, 7-day avg, year total, and all-time
+-- total, plus a single sidecar scan for books_year + books_total together.
+-- build() reads ctx.stats.* — no DB or cache logic here.
 
-local function invalidateStatsCache()
-    _stats_cache     = nil
-    _stats_cache_day = nil
+-- _lbl_w_cache is kept here because it depends on font size, not on stats data.
+-- Declared before _invalidateLblCache so the upvalue is properly in scope.
+-- Cleared by M.invalidateCache() and M.reset(); the font-size key is the real
+-- invalidation guard — a different font_size produces a different key so stale
+-- entries from a previous scale are simply never hit.
+local _lbl_w_cache = {}
+local function _invalidateLblCache()
+    _lbl_w_cache = {}
 end
 
--- countMarkedRead is provided by module_books_shared (shared implementation).
-local _SH = require("desktop_modules/module_books_shared")
-local _countMarkedRead = _SH.countMarkedRead
-
--- Returns books_read, year_secs, today_secs. Uses shared DB connection if provided.
--- Caches results for the current calendar day.
-local function getGoalStats(shared_conn)
-    local today_key = os.date("%Y-%m-%d")
-    if _stats_cache and _stats_cache_day == today_key then
-        return _stats_cache[1], _stats_cache[2], _stats_cache[3]
-    end
-
-    local year_secs, today_secs = 0, 0
-    local conn = shared_conn or Config.openStatsDB()
-    if conn then
-        local own_conn = not shared_conn
-        local ok, err = pcall(function()
-            local t           = os.date("*t")
-            local year_start  = os.time{ year = t.year, month = 1, day = 1, hour = 0, min = 0, sec = 0 }
-            local today_start = os.time() - (t.hour * 3600 + t.min * 60 + t.sec)
-            local stmt = conn:prepare([[
-                SELECT
-                    (SELECT sum(s) FROM (
-                        SELECT sum(duration) AS s FROM page_stat
-                        WHERE start_time >= ? GROUP BY id_book, page)),
-                    (SELECT sum(s) FROM (
-                        SELECT sum(duration) AS s FROM page_stat
-                        WHERE start_time >= ? GROUP BY id_book, page));]])
-            if stmt then
-                local row = stmt:bind(year_start, today_start):step()
-                year_secs  = tonumber(row and row[1]) or 0
-                today_secs = tonumber(row and row[2]) or 0
-                stmt:reset()
-            end
-        end)
-        if not ok then logger.warn("simpleui: reading_goals: getGoalStats failed: " .. tostring(err)) end
-        if own_conn then pcall(function() conn:close() end) end
-    end
-
-    local books_read = _countMarkedRead(os.date("%Y"))
-    _stats_cache     = { books_read, year_secs, today_secs }
-    _stats_cache_day = today_key
-    return books_read, year_secs, today_secs
-end
 
 -- Computes all layout metrics for the default layout at the given scale factor.
 -- Pre-resolves font faces so buildGoalRow doesn't call Font:getFace on every render.
@@ -186,11 +163,17 @@ end
 -- Called once per M.build so both rows share the same column width.
 local function _measureLblW(labels, face, floor_w)
     local max_w = 0
+    local fs    = face.size  -- integer; unique per font/size combination
     for _, lbl in ipairs(labels) do
-        local tw = TextWidget:new{ text = lbl, face = face, bold = true }
-        local w  = tw:getSize().w
-        tw:free()
-        if w > max_w then max_w = w end
+        local key    = lbl .. "|" .. fs
+        local cached = _lbl_w_cache[key]
+        if not cached then
+            local tw = TextWidget:new{ text = lbl, face = face, bold = true }
+            cached   = tw:getSize().w
+            tw:free()
+            _lbl_w_cache[key] = cached
+        end
+        if cached > max_w then max_w = cached end
     end
     return math.max(max_w, floor_w)
 end
@@ -198,7 +181,7 @@ end
 -- Builds a single inline row: Label [bar] XX%  detail
 -- Used by the Compact layout. All elements are horizontally laid out and vertically centred.
 -- lbl_w is pre-computed by _measureLblW so both rows share the same column width.
-local function buildCompactGoalRow(inner_w, lbl_w, pct_w, label_str, pct, pct_str, detail_str, on_tap)
+local function buildCompactGoalRow(inner_w, lbl_w, pct_w, label_str, pct, pct_str, detail_str, on_tap, face_row, face_sub)
     local LeftContainer  = require("ui/widget/container/leftcontainer")
     local RightContainer = require("ui/widget/container/rightcontainer")
 
@@ -232,7 +215,7 @@ local function buildCompactGoalRow(inner_w, lbl_w, pct_w, label_str, pct, pct_st
         align = "center",
         vcenter_left(TextWidget:new{
             text    = label_str,
-            face    = Font:getFace("smallinfofont", _COMPACT_ROW_FS),
+            face    = face_row,
             bold    = true,
             fgcolor = _CLR_TEXT_LBL,
             width   = lbl_w,
@@ -242,7 +225,7 @@ local function buildCompactGoalRow(inner_w, lbl_w, pct_w, label_str, pct, pct_st
         HorizontalSpan:new{ width = BAR_PCT_GAP },
         vcenter_left(TextWidget:new{
             text    = pct_str,
-            face    = Font:getFace("smallinfofont", _COMPACT_ROW_FS),
+            face    = face_row,
             bold    = true,
             fgcolor = _CLR_TEXT_PCT,
             width   = PCT_W,
@@ -250,7 +233,7 @@ local function buildCompactGoalRow(inner_w, lbl_w, pct_w, label_str, pct, pct_st
         HorizontalSpan:new{ width = PCT_DETAIL_GAP },
         vcenter_right(TextWidget:new{
             text      = detail_str,
-            face      = Font:getFace("cfont", _COMPACT_SUB_FS),
+            face      = face_sub,
             fgcolor   = CLR_TEXT_SUB,
             width     = DETAIL_W,
             alignment = "right",
@@ -353,8 +336,11 @@ local function buildGoalRow(inner_w, label_str, pct, pct_str, detail_str, on_tap
     return tappable
 end
 
--- Triggers a homescreen refresh
+-- Triggers a homescreen refresh after a goal change.
+-- Invalidates StatsProvider so _buildCtx re-fetches with updated ctx.stats.
 local function _refreshHS()
+    local SP = package.loaded["desktop_modules/module_stats_provider"]
+    if SP then SP.invalidate() end
     local HS = package.loaded["sui_homescreen"]
     if HS then HS.refresh(false) end
 end
@@ -370,7 +356,6 @@ local function showAnnualGoalDialog(on_confirm)
         ok_text     = _("Save"), cancel_text = _("Cancel"),
         callback    = function(spin)
             G_reader_settings:saveSetting("navbar_reading_goal", math.floor(spin.value))
-            invalidateStatsCache()
             _refreshHS()
             if on_confirm then on_confirm() end
         end,
@@ -387,7 +372,6 @@ local function showAnnualPhysicalDialog(on_confirm)
         ok_text     = _("Save"), cancel_text = _("Cancel"),
         callback    = function(spin)
             G_reader_settings:saveSetting("navbar_reading_goal_physical", math.floor(spin.value))
-            invalidateStatsCache()
             _refreshHS()
             if on_confirm then on_confirm() end
         end,
@@ -406,7 +390,6 @@ local function showDailySettingsDialog(on_confirm)
         callback    = function(spin)
             G_reader_settings:saveSetting("navbar_daily_reading_goal_secs",
                 math.floor(spin.value) * 60)
-            invalidateStatsCache()
             _refreshHS()
             if on_confirm then on_confirm() end
         end,
@@ -463,23 +446,44 @@ M.default_on  = true
 M.showAnnualGoalDialog     = showAnnualGoalDialog
 M.showAnnualPhysicalDialog = showAnnualPhysicalDialog
 M.showDailySettingsDialog  = showDailySettingsDialog
-M.invalidateCache          = invalidateStatsCache
 
--- Clears the stats cache on plugin reset or midnight rollover
-function M.reset() invalidateStatsCache() end
+-- Delegate cache invalidation to StatsProvider (shared with reading_stats).
+function M.invalidateCache()
+    local SP = package.loaded["desktop_modules/module_stats_provider"]
+    if SP then SP.invalidate() end
+    _invalidateLblCache()
+end
+
+-- Called on plugin reset (hot update). Clears label width cache too since
+-- font metrics may change after a restart.
+function M.reset()
+    local SP = package.loaded["desktop_modules/module_stats_provider"]
+    if SP then SP.invalidate() end
+    _invalidateLblCache()
+end
 
 -- Builds the widget. Branches on layout mode: compact (single inline row) or default (two lines).
 function M.build(w, ctx)
+    Config.applyLabelToggle(M, _("Reading Goals"))
     local show_ann = showAnnual()
     local show_day = showDaily()
     if not show_ann and not show_day then return nil end
 
     local inner_w = w - PAD * 2
-    local books_read, year_secs, today_secs = getGoalStats(ctx.db_conn)
-    local rows = VerticalGroup:new{ align = "left" }
+    -- Stats pre-fetched by StatsProvider and passed via ctx.stats.
+    local sp         = ctx.stats or {}
+    local books_read = sp.books_year  or 0
+    local year_secs  = sp.year_secs   or 0
+    local today_secs = sp.today_secs  or 0
+    if sp.db_conn_fatal and ctx then ctx.db_conn_fatal = true end
+    local rows    = VerticalGroup:new{ align = "left" }
+    local compact = isCompact()
 
-    if isCompact() then
-        local face = Font:getFace("smallinfofont", _COMPACT_ROW_FS)
+    if compact then
+        -- Resolve faces once; pass to buildCompactGoalRow to avoid Font:getFace per row.
+        local _face_row, _face_sub = _getCompactFaces()
+        -- Capture year string once — avoids repeated os.date calls.
+        local year_str = _getYearStr()
         -- Pre-compute data for both rows so we can measure pct_w across both
         -- and use the same column width, preventing overlap when pct >= 100%.
         local ann_pct, ann_pct_str, ann_detail
@@ -490,45 +494,47 @@ function M.build(w, ctx)
         local pct_strs = {}
         if show_ann and ann_pct_str ~= "" then pct_strs[#pct_strs+1] = ann_pct_str end
         if show_day and day_pct_str ~= "" then pct_strs[#pct_strs+1] = day_pct_str end
-        local pct_w = _measureLblW(pct_strs, face, Screen:scaleBySize(28))
+        local pct_w = _measureLblW(pct_strs, _face_row, Screen:scaleBySize(28))
         if show_ann then
-            local lbl_w = _measureLblW({ _getYearStr() }, face, _COMPACT_LBL_W)
+            local lbl_w = _measureLblW({ year_str }, _face_row, _COMPACT_LBL_W)
             rows[#rows+1] = buildCompactGoalRow(
-                inner_w, lbl_w, pct_w, _getYearStr(), ann_pct, ann_pct_str, ann_detail,
-                function() showAnnualGoalDialog() end)
+                inner_w, lbl_w, pct_w, year_str, ann_pct, ann_pct_str, ann_detail,
+                function() showAnnualGoalDialog() end, _face_row, _face_sub)
         end
         if show_ann and show_day then
             rows[#rows+1] = VerticalSpan:new{ width = _COMPACT_ROW_GAP }
         end
         if show_day then
-            local lbl_w = _measureLblW({ _("Today") }, face, _COMPACT_LBL_W)
+            local lbl_w = _measureLblW({ _("Today") }, _face_row, _COMPACT_LBL_W)
             rows[#rows+1] = buildCompactGoalRow(
                 inner_w, lbl_w, pct_w, _("Today"), day_pct, day_pct_str, day_detail,
-                function() showDailySettingsDialog() end)
+                function() showDailySettingsDialog() end, _face_row, _face_sub)
         end
     else
-        local scale = Config.getModuleScale("reading_goals", ctx.pfx)
-        local d     = _scaledDims(scale)
+        local scale    = Config.getModuleScale("reading_goals", ctx.pfx)
+        local d        = _scaledDims(scale)
+        -- Capture year string once — avoids repeated os.date calls.
+        local year_str = _getYearStr()
         if show_ann then
             local pct, pct_str, detail = _annualData(books_read)
-            local ann_d = {}
-            for k, v in pairs(d) do ann_d[k] = v end
-            ann_d.lbl_w = _measureLblW({ _getYearStr() }, d.face_row, d.lbl_w)
+            -- Measure the label width and store directly in d (single shared table).
+            -- Each row gets a different lbl_w, so we restore after the second row.
+            local ann_lbl_w = _measureLblW({ year_str }, d.face_row, d.lbl_w)
+            d.lbl_w = ann_lbl_w
             rows[#rows+1] = buildGoalRow(
-                inner_w, _getYearStr(), pct, pct_str, detail,
-                function() showAnnualGoalDialog() end, ann_d)
+                inner_w, year_str, pct, pct_str, detail,
+                function() showAnnualGoalDialog() end, d)
         end
         if show_ann and show_day then
             rows[#rows+1] = VerticalSpan:new{ width = d.row_gap }
         end
         if show_day then
             local pct, pct_str, detail = _dailyData(today_secs)
-            local day_d = {}
-            for k, v in pairs(d) do day_d[k] = v end
-            day_d.lbl_w = _measureLblW({ _("Today") }, d.face_row, d.lbl_w)
+            local day_lbl_w = _measureLblW({ _("Today") }, d.face_row, d.lbl_w)
+            d.lbl_w = day_lbl_w
             rows[#rows+1] = buildGoalRow(
                 inner_w, _("Today"), pct, pct_str, detail,
-                function() showDailySettingsDialog() end, day_d)
+                function() showDailySettingsDialog() end, d)
         end
     end
 
@@ -595,6 +601,7 @@ function M.getMenuItems(ctx_menu)
           separator = true,
         },
         scale_item,
+        Config.makeLabelToggleItem("reading_goals", _("Reading Goals"), refresh, _lc),
         { text         = _lc("Annual Goal"),
           checked_func = function() return showAnnual() end,
           keep_menu_open = true,

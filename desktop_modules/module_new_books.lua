@@ -104,6 +104,7 @@ end
 -- ---------------------------------------------------------------------------
 
 function M.build(w, ctx)
+    Config.applyLabelToggle(M, _("New Books"))
     -- Cache the scan result for the lifetime of this render cycle.
     local new_fps = ctx._new_books_fps
     if not new_fps then
@@ -147,7 +148,7 @@ function M.build(w, ctx)
     local row = HorizontalGroup:new{ align = "top" }
     for i = 1, cols do
         local fp    = new_fps[i]
-        local bd    = SH.getBookData(fp, ctx.prefetched and ctx.prefetched[fp], ctx.db_conn)
+        local bd    = SH.getBookData(fp, ctx.prefetched and ctx.prefetched[fp])
         local cover = SH.getBookCover(fp, cw, ch) or SH.coverPlaceholder(bd.title, cw, ch)
 
         -- "New" for unread books, read percentage otherwise.
@@ -252,7 +253,7 @@ function M.getMenuItems(ctx_menu)
         set       = function(v) Config.setItemLabelScale(v, "new_books", ctx_menu.pfx) end,
         refresh   = ctx_menu.refresh,
     })
-    return { _makeScaleItem(ctx_menu), label_item, _makeThumbScaleItem(ctx_menu) }
+    return { _makeScaleItem(ctx_menu), label_item, Config.makeLabelToggleItem("new_books", _("New Books"), ctx_menu.refresh, _lc), _makeThumbScaleItem(ctx_menu) }
 end
 
 return M
