@@ -2001,6 +2001,7 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                                         text           = _("Group Books by Series"),
                                         checked_func   = function() return FC.getSeriesGrouping() end,
                                         keep_menu_open = true,
+                                        enabled_func   = function() return FC.isEnabled() end,
                                         callback       = function()
                                             FC.setSeriesGrouping(not FC.getSeriesGrouping())
                                             FC.invalidateCache()

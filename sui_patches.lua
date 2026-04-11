@@ -1771,6 +1771,72 @@ function M.showHSAfterResume(plugin)
 end
 
 -- ---------------------------------------------------------------------------
+-- Book Information dialog — restore FM path on close
+-- ---------------------------------------------------------------------------
+-- When "Book information" is opened from the File Manager, the KeyValuePage
+-- (KVP) widget is fullscreen.  When it closes, patchUIManagerClose sees no
+-- other fullscreen widget on the stack (the FM itself is explicitly excluded
+-- from the "other_open" check) and therefore calls _doShowHS, which pushes
+-- the HomeScreen on top of the FM.  This does not happen when the same dialog
+-- is opened from History, because History is still on the stack as a second
+-- fullscreen widget, so other_open = true and _doShowHS is skipped.
+--
+-- Fix: wrap filemanagerutil.genBookInformationButton so that, when the caller
+-- is the FM (not the reader), we (a) record the current file_chooser path
+-- before the dialog opens and (b) inject a wrapper around the KVP's
+-- close_callback that sets _sui_show_folder_pending = true (suppresses
+-- _doShowHS) and calls changeToPath to restore the folder if the FM drifted.
+-- ---------------------------------------------------------------------------
+
+function M.patchBookInfoNavigation(plugin)
+    local ok_util, fmutil = pcall(require, "apps/filemanager/filemanagerutil")
+    if not ok_util or not fmutil then return end
+    if fmutil._simpleui_bookinfo_nav_patched then return end
+    fmutil._simpleui_bookinfo_nav_patched = true
+
+    local orig_gen = fmutil.genBookInformationButton
+    plugin._orig_fmutil_gen_bookinfo = orig_gen
+
+    fmutil.genBookInformationButton = function(doc_settings_or_file, book_props, caller_callback, button_disabled)
+        local btn = orig_gen(doc_settings_or_file, book_props, caller_callback, button_disabled)
+        local orig_cb = btn.callback
+        btn.callback = function()
+            -- Capture the FM path *before* orig_cb fires (orig_cb calls
+            -- caller_callback which closes the file-dialog, then shows the KVP).
+            local FileManager = require("apps/filemanager/filemanager")
+            local fm = FileManager.instance
+            local saved_path = fm and fm.file_chooser and fm.file_chooser.path
+
+            orig_cb()
+
+            -- Only intervene when called from the FM (not from the reader).
+            if not saved_path then return end
+            if not (fm and fm.bookinfo and fm.bookinfo.kvp_widget) then return end
+
+            local kvp = fm.bookinfo.kvp_widget
+            local orig_close_cb = kvp.close_callback
+            kvp.close_callback = function()
+                -- Run the original close_callback first (metadata broadcast etc.).
+                if orig_close_cb then orig_close_cb() end
+
+                -- Suppress _doShowHS: by the time scheduleIn(0) fires this flag
+                -- will be checked and the HS open will be skipped.
+                local fm2 = require("apps/filemanager/filemanager").instance
+                if fm2 then
+                    fm2._sui_show_folder_pending = true
+                    -- Restore the folder the user was browsing, in case the FM
+                    -- drifted (e.g. a metadata write triggered a path change).
+                    if fm2.file_chooser and fm2.file_chooser.path ~= saved_path then
+                        fm2.file_chooser:changeToPath(saved_path)
+                    end
+                end
+            end
+        end
+        return btn
+    end
+end
+
+-- ---------------------------------------------------------------------------
 -- installAll / teardownAll
 -- ---------------------------------------------------------------------------
 
@@ -1784,6 +1850,7 @@ function M.installAll(plugin)
     M.patchUIManagerClose(plugin)
     M.patchMenuInitForPagination(plugin)
     M.patchMenuForNavpager(plugin)
+    M.patchBookInfoNavigation(plugin)
     -- Folder covers are installed only when the feature is enabled to avoid
     -- wrapping MosaicMenuItem.update unconditionally, which would hide the
     -- BookInfoManager upvalue from third-party user-patches.
@@ -1910,6 +1977,15 @@ function M.teardownAll(plugin)
         FileChooser.init            = plugin._orig_fc_init
         FileChooser._navbar_patched = nil
         plugin._orig_fc_init        = nil
+    end
+
+    local fmutil = package.loaded["apps/filemanager/filemanagerutil"]
+    if fmutil and fmutil._simpleui_bookinfo_nav_patched then
+        if plugin._orig_fmutil_gen_bookinfo then
+            fmutil.genBookInformationButton       = plugin._orig_fmutil_gen_bookinfo
+            plugin._orig_fmutil_gen_bookinfo      = nil
+        end
+        fmutil._simpleui_bookinfo_nav_patched = nil
     end
 
     local FileManagerMenu = package.loaded["apps/filemanager/filemanagermenu"]

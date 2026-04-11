@@ -533,10 +533,18 @@ function M.apply(fm_self)
                 -- uses a cached item table, so the back button would stay visible even
                 -- after arriving at the root. We re-evaluate the state here so it
                 -- is hidden immediately without needing a page turn.
-                local orig_onFolderUp = fc.onFolderUp
-                fm_self._titlebar_orig_fc_onFolderUp = orig_onFolderUp
+                -- NOTE: do NOT capture fc.onFolderUp as a fixed upvalue here.
+                -- sui_foldercovers.lua may install/uninstall its own onFolderUp
+                -- patch on the FileChooser *class* at runtime (when the folder-covers
+                -- feature is toggled).  If we captured the old function at setup time
+                -- the upvalue would become stale after uninstall, causing a crash when
+                -- the captured closure tries to call _sg_orig_onFolderUp (nil).
+                -- Instead we resolve the current class method at call time.
+                local FileChooser_cls = require("ui/widget/filechooser")
+                fm_self._titlebar_orig_fc_onFolderUp = true  -- sentinel: wrapper is active
                 fc.onFolderUp = function(fc_self, ...)
-                    local ok, result = pcall(orig_onFolderUp, fc_self, ...)
+                    local current = FileChooser_cls.onFolderUp
+                    local ok, result = pcall(current, fc_self, ...)
                     -- Re-evaluate after the navigation completes.
                     -- If genItemTable already ran it will have set _simpleui_has_go_up
                     -- correctly; if not (cached items), we compute it now from the
@@ -744,7 +752,9 @@ function M.restore(fm_self)
     end
     fm_self._titlebar_orig_fc_genItemTable = nil
     if fc and fm_self._titlebar_orig_fc_onFolderUp then
-        fc.onFolderUp = fm_self._titlebar_orig_fc_onFolderUp
+        -- The wrapper was installed on the fc *instance*; removing it lets the
+        -- class method (whichever is current) handle the call directly again.
+        fc.onFolderUp = nil
     end
     fm_self._titlebar_orig_fc_onFolderUp = nil
     if fc and fm_self._titlebar_orig_fc_onGotoPage then
