@@ -1156,12 +1156,25 @@ local function _installSeriesGrouping()
     -- refreshPath: re-enter the virtual folder after a reload (e.g. after
     -- closing a book and returning to the library).
     FileChooser.refreshPath = function(fc)
-        -- Always flush the item cache before rebuilding the list so that
-        -- status changes (long-press dialog, book close, etc.) are reflected
-        -- immediately — the cache key does not encode per-book status/percent,
-        -- so stale entries would otherwise survive until restart.
-        _cache = {}
-        _cache_count = 0
+        -- Only flush the item cache when the FM library was actually navigated
+        -- since the last homescreen open. When returning directly from a book
+        -- (reader→homescreen, no FM browsing in between) the cache entries are
+        -- still valid: the cache key encodes path + filename + collate, none of
+        -- which change just because a book was read. Flushing unconditionally
+        -- forced a full filesystem scan on every book close, adding ~1-3 s on
+        -- large libraries on slow e-reader flash storage.
+        --
+        -- _library_was_visited is set by sui_patches.lua's onPathChanged hook
+        -- (fires on every FM directory change) and cleared by the homescreen on
+        -- close — the same guard the homescreen itself uses for its own cover cache.
+        -- We read it without consuming it here: the homescreen's onCloseWidget
+        -- is responsible for clearing it, ensuring both caches are invalidated
+        -- together when warranted.
+        local HS = package.loaded["sui_homescreen"]
+        if HS and HS._library_was_visited then
+            _cache = {}
+            _cache_count = 0
+        end
         _sg_orig_refreshPath(fc)
         if not M.getSeriesGrouping() then return end
         if not _sg_current then return end
@@ -1819,7 +1832,7 @@ function M.install()
         end
 
         -- ── Series index badge (top-left, same style as pages badge) ──
-        if M.getOverlaySeries() and self.status ~= "complete" then
+        if M.getOverlaySeries() then
             local series_index = self._fc_series_index
             if not series_index and self.filepath then
                 local bi = BookInfoManager:getBookInfo(self.filepath, false)
